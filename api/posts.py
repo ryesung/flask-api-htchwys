@@ -12,24 +12,33 @@ from middlewares import auth_required
 @auth_required
 def get_posts():
     # validation
-    # user = g.get("user")
-    # if user is None:
-    #     return abort(401)
+    user = g.get("user")
+    print(user.id)
+    if user is None:
+        return abort(401)
 
-    # access query values or insert default values
+    # access query values or insert default values, validate the fields are correct entries
     queries = request.args.to_dict()
     authorString = queries.get("authorIds", None)
-
     if not authorString:
         return jsonify({"error": "Need to specify Authors"}), 400
 
     sortBy = queries.get("sortBy", "id")
+    valid_sortBy_queries =  [ "id", "reads", "likes", "popularity"]
+    if sortBy not in valid_sortBy_queries:
+        return  jsonify({"error": "Not a valid sortBy query"}), 404
+
+
     direction = queries.get("direction", "asc")
+    valid_direction_queries = ["asc", "desc"]
+    if direction not in valid_direction_queries:
+        return jsonify({"error": "Not a valid direction query"}), 404
+
     sortReverse = False
     if direction == "desc":
         sortReverse = True
 
-    #create master list of posts- no duplicates and dictionary posts
+    #create master list of posts- no duplicates and make the posts in dict format
     post_list = []
     if (',' in authorString):
         authorIds = [int(i) for i in authorString.split(',')]
@@ -48,7 +57,7 @@ def get_posts():
                 post_list.append(item)
 
 
-
+    #use all query parameters to get final sorted list and jsonify for response
     master_list = sorted(post_list, key=lambda d: d[sortBy], reverse=sortReverse)
     final_json = {"posts": master_list}
 
@@ -86,3 +95,73 @@ def posts():
 
 @api.patch("/posts/<int:postId>")
 @auth_required
+def update(postId):
+    # validation
+    user = g.get("user")
+    if user is None:
+        return abort(401)
+
+    linked_post_user = db.session.get(UserPost, (user.id, postId))
+    if not (linked_post_user):
+        return jsonify({"error": "User can't edit post or post doesn't exist"}), 404
+
+
+    post_to_change = db.session.get(Post, postId)
+
+
+    #get list of author IDs associated with postID
+    authors = Post.get_authors_by_post(postId)
+    post_authors = [i.id for i in authors]
+
+    data = request.json
+
+
+    for data_key, data_value in data.items():
+        if data_key == "authorIds" and type(data_value) == list and type(data_value[0]) == int:
+            #delete any extraneous authors in previous record
+            for a in post_authors:
+                if a not in data_value:
+                    delete_post = UserPost.query.get((a, postId))
+                    db.session.delete(delete_post)
+
+
+
+        #add any new Authors
+            for authorId in data_value:
+                if authorId not in post_authors:
+                    db.session.add(UserPost(user_id=authorId, post_id=postId))
+
+            # reassign value to authorIds list if in PATCH request
+            post_authors = data_value
+
+        if data_key == "tags" and type(data_value) == list and type(data_value[0]) == str:
+            post_to_change.tags = data_value
+
+        if data_key == "text" and type(data_value) == str:
+            post_to_change.text = data_value
+
+    db.session.commit()
+
+    updated_post = db.session.get(Post, postId)
+    json_response = row_to_dict(updated_post)
+    json_response['authorIds'] = post_authors
+    return jsonify({'post': json_response}), 200
+
+
+
+
+    # author_posts = Post.get_posts_by_user_id(user.id)
+    # for post in author_posts:
+    #     print(post.id)
+    #     if post.id == postId:
+    #         post_to_change = post
+    #         break
+    #
+    # data = request.json
+    # post_dict = row_to_dict(post_to_change)
+    # for k, v in data.items():
+    #         post_dict[k] = v
+    #
+    #
+    # db.session.commit()
+    # return jsonify({'post': post_dict})
