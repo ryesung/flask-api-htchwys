@@ -164,6 +164,3 @@ cython_debug/
 
 # OS X
 .DS_Store
-
-#practice on db
-database_play.py
