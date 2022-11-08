@@ -117,12 +117,15 @@ def update(postId):
 
 
     for data_key, data_value in data.items():
-        if data_key == "authorIds" and type(data_value) == list and type(data_value[0]) == int:
-            #delete any extraneous authors in previous record
-            for a in post_authors:
-                if a not in data_value:
-                    delete_post = UserPost.query.get((a, postId))
-                    db.session.delete(delete_post)
+        if data_key == "authorIds":
+            if type(data_value) == list and type(data_value[0]) == int:
+                #delete any extraneous authors in previous record
+                for a in post_authors:
+                    if a not in data_value:
+                        delete_post = UserPost.query.get((a, postId))
+                        db.session.delete(delete_post)
+            else:
+                return jsonify({"error": "Invalid input for 'authorIds'. "}), 400
 
 
 
@@ -134,12 +137,17 @@ def update(postId):
             # reassign value to authorIds list if in PATCH request
             post_authors = data_value
 
-        if data_key == "tags" and type(data_value) == list and type(data_value[0]) == str:
-            post_to_change.tags = data_value
+        if data_key == "tags":
+            if type(data_value) == list and type(data_value[0]) == str:
+                post_to_change.tags = data_value
+            else:
+                jsonify({"error": "Invalid input for 'tags'."}), 400
 
-        if data_key == "text" and type(data_value) == str:
-            post_to_change.text = data_value
-
+        if data_key == "text":
+            if type(data_value) == str:
+                post_to_change.text = data_value
+            else:
+                jsonify({"error": "Invalid input for 'text'. "}), 400
     db.session.commit()
 
     updated_post = db.session.get(Post, postId)
@@ -150,18 +158,3 @@ def update(postId):
 
 
 
-    # author_posts = Post.get_posts_by_user_id(user.id)
-    # for post in author_posts:
-    #     print(post.id)
-    #     if post.id == postId:
-    #         post_to_change = post
-    #         break
-    #
-    # data = request.json
-    # post_dict = row_to_dict(post_to_change)
-    # for k, v in data.items():
-    #         post_dict[k] = v
-    #
-    #
-    # db.session.commit()
-    # return jsonify({'post': post_dict})

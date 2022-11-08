@@ -23,18 +23,14 @@ class Post(db.Model):
 
 Then in the _**UserPost**_ table there will be a creation of a _**Role**_ column which will be an integer that is 
 linked to a role/permissions level. For instance- 1-(owner/all permissions), 2- (author/limited permisions), 
-3- (different role/alternate permissions). This will allow for changing permissions and simply adding new 
+3- (different role/alternate permissions). This will allow for changing permissions and also adding new custom
 roles to a different integer.
-
-Also in the _**UserPost**_ table there will be a 'pimary_owner' column that will accompany any post. So when looking at the
-UserPost table there won't be any confusion about ownership(making sure there is always at least one owner), but the
-_**Role**_ column also allow for other owners.
 
 ```python
 class UserPost(db.Model):
     (...)
     role = db.Column(db.Integer, nullable=False)
-    primary_owner =  db.Column(db.Integer, nullable=False)
+
 
 ```
 
@@ -42,15 +38,8 @@ For example a UserPost addition will look like this:
 
 ```python
 
-  db.session.add(UserPost(user_id=santiago.id, post_id=post1.id, role=1, primary_owner= post1.owner))
+  db.session.add(UserPost(user_id=santiago.id, post_id=post1.id, role=1))
 
-```
-
-
-
-
-```python
-owner_id = db.Column(db.Integer, db.ForeignKey("post.owner"))
 ```
 
 ###  Question 2
@@ -58,14 +47,12 @@ owner_id = db.Column(db.Integer, db.ForeignKey("post.owner"))
 How would you have to change the PATCH route given your answer above to handle roles?
 
 ### ANSWER:
+ 
 
-To change the PATCH route we can keep the <postID> URL and also the (user.id) to get the Primary Key of the
-UserPost table.  From there the permissions level will be accessed from the _**role**_ column.  Based on the permission 
-level the User can access different columns in the _**Post**_ table to modify. For instance, if the user has 
-a level 1 (owner) level they can also access all of columns in the _**Post**_ table as well as access to the 
-_**UserPost**_ table.
+If the (user.id == post.owner) -from Post table- or has a (user_post.role == 1) -from UserPost table- which is an owner then that user will get back all
+fields from the post_to_change. As well as a list of different roles and users from the UserPost table they will get a list of user.id associated with each role. 
+With the ability to change the role assignment for different users.
 
-```python
-
-```
+Else if the role of the User from the UserPost table with be accessed and returning 
+whatever columns are editable to that User.
 
