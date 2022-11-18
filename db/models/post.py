@@ -1,6 +1,7 @@
 from sqlalchemy.orm import validates
 from ..shared import db
 from db.models.user import User
+from db.models.user_post import UserPost
 
 
 class Post(db.Model):
@@ -34,14 +35,17 @@ class Post(db.Model):
     @staticmethod
     def get_posts_by_user_id(user_id):
         user = User.query.get(user_id)
-        print(type(user))
-        items = Post.query.with_parent(user).all()
-        print(type(Post.query.with_parent(user).all()[0]))
         return Post.query.with_parent(user).all()
 
     @staticmethod
     def get_authors_by_post(post_id):
         post = Post.query.get(post_id)
         return User.query.with_parent(post).all()
+
+
+    @staticmethod
+    def get_user_posts_by_post_id(post_id):
+        user_posts = db.session.query(UserPost).filter_by(post_id=post_id).all()
+        return user_posts
 
 

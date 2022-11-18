@@ -52,7 +52,6 @@ def login():
     data = request.get_json(force=True)
     username = data.get("username", None)
     password = data.get("password", None)
-    print(username, password)
 
     if None in [username, password]:
         return jsonify({"error": "username and password required"}), 400

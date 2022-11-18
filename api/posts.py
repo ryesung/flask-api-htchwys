@@ -4,8 +4,8 @@ from db.shared import db
 from sqlalchemy.orm.exc import UnmappedInstanceError
 from db.models.user_post import UserPost
 from db.models.post import Post
-
-from db.utils import row_to_dict
+from api.helpers_patch import validate_authorIds, validate_tags
+from db.utils import row_to_dict, rows_to_list
 from middlewares import auth_required
 
 
@@ -26,6 +26,8 @@ def get_posts():
 
     # AuthorIds - make sure they in correct format and are valid posts
     authorString = queries.get("authorIds", None)
+
+    ## post_list to add posts
     post_list = []
     if authorString:
         try:
@@ -36,8 +38,8 @@ def get_posts():
 
             for authorId in author_ids:
                 post_response = Post.get_posts_by_user_id(authorId)
-                for p in post_response:
-                    item = row_to_dict(p)
+                for post in post_response:
+                    item = row_to_dict(post)
                     if item not in post_list:
                         post_list.append(item)
 
@@ -55,10 +57,10 @@ def get_posts():
         return jsonify({"error": "Not a valid sortBy query"}), 400
 
     direction = queries.get("direction", "asc")
+    sortReverse = False
     if direction not in valid_direction_queries:
         return jsonify({"error": "Not a valid direction query"}), 400
 
-    sortReverse = False
     if direction == "desc":
         sortReverse = True
 
@@ -76,7 +78,7 @@ def posts():
     # validation
     user = g.get("user")
     if user is None:
-        return abort(401)
+        return jsonify("error: Request Requires Authorization"), 401
 
     data = request.get_json(force=True)
     text = data.get("text", None)
@@ -107,54 +109,58 @@ def update(postId):
     if user is None:
         return jsonify("error: Request Requires Authorization"), 401
 
+    post_is_valid = db.session.get(UserPost, (user.id, postId))
 
-    print(user.id, postId)
-    post_to_change = db.session.get(UserPost, (user.id, postId))
-    if not post_to_change:
+    if not post_is_valid:
          return jsonify({"error": "User does not have permissions to edit post."}), 401
 
-    #get list of author IDs associated with postID
-    authors = Post.get_authors_by_post(postId)
-    post_authors = [i.id for i in authors]
+    # get data from PATCH request
+    data = request.get_json(force=True)
+    authorIds = data.get("authorIds", None)
+    text = data.get("text", None)
+    tags = data.get("tags", None)
 
-    data = request.json
+    post_to_change = db.session.get(Post, (postId))
+
+    if authorIds:
+        if validate_authorIds(authorIds):
+
+            #get all user_posts associated with the post and a list of userIds o
+            user_posts = Post.get_user_posts_by_post_id(postId)
+            userPost_userIds = [userPost.user_id for userPost in user_posts]
+
+            #removing user_posts that are not on the Author list
+            for userPost in user_posts:
+                if userPost.user_id not in authorIds:
+                    db.session.delete(userPost)
 
 
-    for data_key, data_value in data.items():
-        if data_key == "authorIds":
-            if type(data_value) == list and type(data_value[0]) == int:
-                #delete any extraneous authors in previous record
-                for a in post_authors:
-                    if a not in data_value:
-                        delete_post = UserPost.query.get((a, postId))
-                        db.session.delete(delete_post)
-            else:
-                return jsonify({"error": "Invalid input for 'authorIds'. "}), 400
-
-            #add any new Authors
-            for authorId in data_value:
-                if authorId not in post_authors:
+            # add User_Post for Authors not previous in database
+            for authorId in authorIds:
+                if authorId not in userPost_userIds:
                     db.session.add(UserPost(user_id=authorId, post_id=postId))
+        else:
+             return jsonify({"error": "Invalid input for 'authorIds'. "}), 400
 
-            # reassign value to authorIds list if in PATCH request
-            post_authors = data_value
+    if tags:
+        if validate_tags(tags):
+            post_to_change.tags = tags
+        else:
+            return jsonify({"error": "Invalid input for 'tags'."}), 400
 
-        if data_key == "tags":
-            if type(data_value) == list and type(data_value[0]) == str:
-                post_to_change.tags = data_value
-            else:
-                jsonify({"error": "Invalid input for 'tags'."}), 400
+    if text:
+        if type(text) == str:
 
-        if data_key == "text":
-            if type(data_value) == str:
-                post_to_change.text = data_value
-            else:
-                jsonify({"error": "Invalid input for 'text'. "}), 400
+            post_to_change.text = text
+        else:
+            jsonify({"error": "Invalid input for 'text'."}), 400
+
+    db.session.add(post_to_change)
     db.session.commit()
 
     updated_post = db.session.get(Post, postId)
     json_response = row_to_dict(updated_post)
-    json_response['authorIds'] = post_authors
+    json_response['authorIds'] = [userPost.user_id for userPost in Post.get_user_posts_by_post_id(postId)]
     return jsonify({'post': json_response}), 200
 
 
