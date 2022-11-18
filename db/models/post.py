@@ -34,9 +34,14 @@ class Post(db.Model):
     @staticmethod
     def get_posts_by_user_id(user_id):
         user = User.query.get(user_id)
+        print(type(user))
+        items = Post.query.with_parent(user).all()
+        print(type(Post.query.with_parent(user).all()[0]))
         return Post.query.with_parent(user).all()
 
     @staticmethod
     def get_authors_by_post(post_id):
         post = Post.query.get(post_id)
         return User.query.with_parent(post).all()
+
+

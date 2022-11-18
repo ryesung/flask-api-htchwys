@@ -1,60 +1,66 @@
 from flask import jsonify, request, g, abort
-
 from api import api
 from db.shared import db
+from sqlalchemy.orm.exc import UnmappedInstanceError
 from db.models.user_post import UserPost
 from db.models.post import Post
 
 from db.utils import row_to_dict
 from middlewares import auth_required
 
+
+valid_sortBy_queries = ["id", "reads", "likes", "popularity"]
+valid_direction_queries = ["asc", "desc"]
+
+
 @api.get("/posts")
 @auth_required
 def get_posts():
     # validation
     user = g.get("user")
-    print(user.id)
     if user is None:
-        return abort(401)
+        return jsonify("error: Request Requires Authorization"), 401
 
-    # access query values or insert default values, validate the fields are correct entries
+    # access query values
     queries = request.args.to_dict()
+
+    # AuthorIds - make sure they in correct format and are valid posts
     authorString = queries.get("authorIds", None)
-    if not authorString:
+    post_list = []
+    if authorString:
+        try:
+            if (',' in authorString):
+                author_ids = [int(i) for i in authorString.split(',')]
+            else:
+                author_ids = [int(authorString)]
+
+            for authorId in author_ids:
+                post_response = Post.get_posts_by_user_id(authorId)
+                for p in post_response:
+                    item = row_to_dict(p)
+                    if item not in post_list:
+                        post_list.append(item)
+
+        except ValueError:
+            return jsonify({"error": "authorIds must be a string of integer separated by commas"}), 400
+
+        except UnmappedInstanceError:
+            return jsonify({"error": "authorId not in the database"}), 400
+
+    else:
         return jsonify({"error": "Need to specify Authors"}), 400
 
     sortBy = queries.get("sortBy", "id")
-    valid_sortBy_queries =  [ "id", "reads", "likes", "popularity"]
     if sortBy not in valid_sortBy_queries:
-        return  jsonify({"error": "Not a valid sortBy query"}), 404
-
+        return jsonify({"error": "Not a valid sortBy query"}), 400
 
     direction = queries.get("direction", "asc")
-    valid_direction_queries = ["asc", "desc"]
     if direction not in valid_direction_queries:
-        return jsonify({"error": "Not a valid direction query"}), 404
+        return jsonify({"error": "Not a valid direction query"}), 400
 
     sortReverse = False
     if direction == "desc":
         sortReverse = True
-
-    #create master list of posts- no duplicates and make the posts in dict format
-    post_list = []
-    if (',' in authorString):
-        authorIds = [int(i) for i in authorString.split(',')]
-        for author in authorIds:
-            post_response = Post.get_posts_by_user_id(author)
-            for p in post_response:
-                item = row_to_dict(p)
-                if item not in post_list:
-                    post_list.append(item)
-    else:
-        authorId = int(authorString)
-        post_response = Post.get_posts_by_user_id(authorId)
-        for p in post_response:
-            item = row_to_dict(p)
-            if item not in post_list:
-                post_list.append(item)
 
 
     #use all query parameters to get final sorted list and jsonify for response
@@ -99,15 +105,13 @@ def update(postId):
     # validation
     user = g.get("user")
     if user is None:
-        return abort(401)
-
-    linked_post_user = db.session.get(UserPost, (user.id, postId))
-    if not (linked_post_user):
-        return jsonify({"error": "User can't edit post or post doesn't exist"}), 404
+        return jsonify("error: Request Requires Authorization"), 401
 
 
-    post_to_change = db.session.get(Post, postId)
-
+    print(user.id, postId)
+    post_to_change = db.session.get(UserPost, (user.id, postId))
+    if not post_to_change:
+         return jsonify({"error": "User does not have permissions to edit post."}), 401
 
     #get list of author IDs associated with postID
     authors = Post.get_authors_by_post(postId)
@@ -127,9 +131,7 @@ def update(postId):
             else:
                 return jsonify({"error": "Invalid input for 'authorIds'. "}), 400
 
-
-
-        #add any new Authors
+            #add any new Authors
             for authorId in data_value:
                 if authorId not in post_authors:
                     db.session.add(UserPost(user_id=authorId, post_id=postId))
