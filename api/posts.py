@@ -112,7 +112,7 @@ def update(postId):
     post_is_valid = db.session.get(UserPost, (user.id, postId))
 
     if not post_is_valid:
-         return jsonify({"error": "User does not have permissions to edit post."}), 401
+         return jsonify({"error": "User does not have permissions to edit this post."}), 403
 
     # get data from PATCH request
     data = request.get_json(force=True)
